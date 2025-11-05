@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 def register_functions(conn: duckdb.DuckDBPyConnection) -> None:
-    """Register custom scalar function on a DuckDB connection."""
+    """Register custom function on a DuckDB connection."""
     try:
         conn.create_function("get_dataset_file_url", get_dataset_file_url)
         logger.info("✓ Registered get_dataset_file_url")
