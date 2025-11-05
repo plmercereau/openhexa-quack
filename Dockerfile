@@ -11,12 +11,10 @@ RUN apt-get update && \
 # Install duckdb_openhexa package (dependencies from pyproject.toml)
 COPY pyproject.toml /app/
 COPY duckdb_openhexa /app/duckdb_openhexa
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir /app
+RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir /app
 
 # Copy Superset customization (config + init script)
 COPY superset /app/superset
-RUN chmod +x /app/superset/init.sh
 
 USER superset
 WORKDIR /app

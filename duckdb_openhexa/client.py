@@ -66,7 +66,7 @@ class OpenHexaGraphQLClient:
             client = Client(transport=transport, fetch_schema_from_transport=False)
             query = gql(query_string)
             result = client.execute(query, variable_values={"query": "", "perPage": 1000})
-            
+
             records = self._flatten_datasets(result, workspace)
             logger.info(
                 f"Retrieved {len(records)} dataset files"
@@ -131,7 +131,7 @@ class OpenHexaGraphQLClient:
             client = Client(transport=transport, fetch_schema_from_transport=False)
             query = gql(query_string)
             result = client.execute(query, variable_values={"fileId": file_id})
-            
+
             file_data = result.get("datasetVersionFile")
 
             if file_data:
