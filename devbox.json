@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.14.0/.schema/devbox.schema.json",
+  "packages": [
+    "python@3.12",
+    "python312Packages.pip",
+    "docker",
+    "docker-compose"
+  ],
+  "env_from": ".env",
+  "shell": {
+    "init_hook": [
+      ". $VENV_DIR/bin/activate",
+      "echo 'Installing Python dependencies...'",
+      "pip install -q -e .",
+      "echo ''",
+      "echo 'Quick start:'",
+      "echo '  1. Start services: docker compose up -d'",
+      "echo '  2. Access Superset: http://localhost:8088 (admin/admin)'",
+      "echo ''"
+    ]
+  }
+}

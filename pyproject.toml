@@ -1,0 +1,31 @@
+[project]
+name = "duckdb-graphql"
+version = "0.1.0"
+description = "DuckDB extension for querying GraphQL endpoints with transparent authentication"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "duckdb>=0.10.0",
+    "duckdb-engine>=0.11.0",
+    "gql[requests]>=3.5.0",
+    "pandas>=2.0.0",
+    "graphql-core>=3.2.0",
+    "sqlalchemy>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "black>=24.0.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["duckdb_openhexa*"]
+
+[tool.black]
+line-length = 100
+target-version = ['py310']
+
