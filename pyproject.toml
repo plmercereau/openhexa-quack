@@ -11,6 +11,7 @@ dependencies = [
     "pandas>=2.0.0",
     "graphql-core>=3.2.0",
     "sqlalchemy>=2.0.0",
+    "glom>=23.0.0",
 ]
 
 [project.optional-dependencies]

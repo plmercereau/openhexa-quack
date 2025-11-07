@@ -2,13 +2,24 @@
 
 import logging
 import os
-from typing import Any, Dict, List, Optional
+import time
+from typing import Any, Dict, List, Optional, Tuple
 
+from glom import glom
 from gql import Client, gql
 from gql.transport.exceptions import TransportQueryError
 from gql.transport.requests import RequestsHTTPTransport
 
 logger = logging.getLogger(__name__)
+
+# Global in-memory cache for download URLs
+# Cache stores tuples of (url, timestamp) for TTL enforcement
+_download_url_cache: Dict[str, Tuple[Optional[str], float]] = {}
+_CACHE_SIZE = int(os.getenv("OPENHEXA_CACHE_SIZE", "1000"))
+_CACHE_TTL_SECONDS = int(os.getenv("GCS_SIGNED_BUCKET_CACHE_TTL_MINUTES", "9")) * 60
+logger.info(
+    f"Global download URL cache configured with max size {_CACHE_SIZE} and TTL {_CACHE_TTL_SECONDS}s"
+)
 
 
 class OpenHexaGraphQLClient:
@@ -28,12 +39,18 @@ class OpenHexaGraphQLClient:
         if self.api_token:
             headers["Authorization"] = f"Bearer {self.api_token}"
 
-        return RequestsHTTPTransport(
-            url=self.url, headers=headers, verify=True, retries=3, timeout=30
+        transport = RequestsHTTPTransport(
+            url=self.url,
+            headers=headers,
+            verify=True,
+            retries=3,
+            timeout=30,
         )
 
+        return transport
+
     def query_datasets(self, workspace: Optional[str] = None) -> List[Dict[str, str]]:
-        """Query datasets from OpenHexa, optionally filtered by workspace."""
+        """Query datasets from OpenHexa, optionally filtered by workspace (NOT cached - always fresh)."""
         query_string = """
         query GetDatasets($query: String!, $perPage: Int!) {
             datasets(query: $query, perPage: $perPage) {
@@ -64,6 +81,7 @@ class OpenHexaGraphQLClient:
         try:
             transport = self._get_transport()
             client = Client(transport=transport, fetch_schema_from_transport=False)
+
             query = gql(query_string)
             result = client.execute(query, variable_values={"query": "", "perPage": 1000})
 
@@ -110,43 +128,95 @@ class OpenHexaGraphQLClient:
                             "dataset": dataset_slug,
                             "version": version_name,
                             "filename": file_item.get("filename", ""),
-                            "file_id": file_item.get("id", ""),
+                            "file_path": f"{workspace_slug}/{dataset_slug}/{version_name}/{file_item.get('filename', '')}",
                         }
                     )
 
         return records
 
-    def query_file_download_url(self, file_id: str) -> Optional[str]:
-        """Query download URL for a specific dataset file."""
-        query_string = """
-        query GetFileDownloadUrl($fileId: ID!) {
-            datasetVersionFile(id: $fileId) {
-                downloadUrl
-            }
-        }
+    # def query_file_download_url(self, workspace_slug: str, dataset_slug: str, version: str, filename: str) -> Optional[str]:
+    def query_file_download_url(self, file_path: str) -> Optional[str]:
+        """Query download URL for a specific dataset file (cached in global memory with TTL).
+
+        Uses a global dict cache shared across all client instances.
+        Cache entries expire after GCS_SIGNED_BUCKET_CACHE_TTL_MINUTES (default: 9 minutes).
+        Cache size can be configured via OPENHEXA_CACHE_SIZE env var (default: 1000).
         """
+        # Check global cache first and verify TTL
+        if file_path in _download_url_cache:
+            cached_url, cached_time = _download_url_cache[file_path]
+            age_seconds = time.time() - cached_time
+
+            if age_seconds < _CACHE_TTL_SECONDS:
+                logger.info(
+                    f"CACHE HIT for {file_path} (age: {age_seconds:.1f}s, cache size: {len(_download_url_cache)})"
+                )
+                return cached_url
+            else:
+                # Cache entry expired
+                logger.info(
+                    f"CACHE EXPIRED for {file_path} (age: {age_seconds:.1f}s > TTL: {_CACHE_TTL_SECONDS}s)"
+                )
+                del _download_url_cache[file_path]
+
+        workspace_slug, dataset_slug, version, filename = file_path.split("/")
+
+        query_string = """
+        query GetFileDownloadUrl($workspaceSlug: String!, $datasetSlug: String!, $filename: String!) {{
+            datasetLinkBySlug(workspaceSlug: $workspaceSlug, datasetSlug: $datasetSlug) {{
+                dataset {{
+                    {version_query} {{
+                        fileByName(name: $filename) {{
+                            downloadUrl(attachment: false)
+                        }}
+                    }}
+                }}
+            }}
+        }}
+        """.format(
+            version_query="latestVersion" if version == "latest" else f'version(id: "{version}")'
+        )
 
         try:
             transport = self._get_transport()
             client = Client(transport=transport, fetch_schema_from_transport=False)
+
             query = gql(query_string)
-            result = client.execute(query, variable_values={"fileId": file_id})
+            result = client.execute(
+                query,
+                variable_values={
+                    "workspaceSlug": workspace_slug,
+                    "datasetSlug": dataset_slug,
+                    "filename": filename,
+                },
+            )
 
-            file_data = result.get("datasetVersionFile")
+            logger.info(f"Fetched download URL from API for {file_path}")
 
-            if file_data:
-                download_url = file_data.get("downloadUrl")
-                logger.info(f"Retrieved download URL for file {file_id}")
-                return download_url
-            else:
-                logger.warning(f"File {file_id} not found")
-                return None
+            version_key = "latestVersion" if version == "latest" else "version"
+            path = f"datasetLinkBySlug.dataset.{version_key}.fileByName.downloadUrl"
+
+            download_url = glom(result, path, default=None)
+
+            # Store in global cache with current timestamp (simple LRU: remove oldest if cache is full)
+            if len(_download_url_cache) >= _CACHE_SIZE:
+                # Remove first (oldest) item
+                oldest_key = next(iter(_download_url_cache))
+                del _download_url_cache[oldest_key]
+                logger.debug(f"Cache full, evicted {oldest_key}")
+
+            _download_url_cache[file_path] = (download_url, time.time())
+            logger.info(
+                f"Fetched and cached download URL for {file_path} (cache size: {len(_download_url_cache)}, TTL: {_CACHE_TTL_SECONDS}s)"
+            )
+
+            return download_url
 
         except TransportQueryError as e:
             logger.error(
-                f"GraphQL query failed for file {file_id}: {e.errors if hasattr(e, 'errors') else e}"
+                f"GraphQL query failed for file path {file_path}: {e.errors if hasattr(e, 'errors') else e}"
             )
             return None
         except Exception as e:
-            logger.error(f"Unexpected error querying file {file_id}: {e}", exc_info=True)
+            logger.error(f"Unexpected error querying file path {file_path}: {e}", exc_info=True)
             return None

@@ -16,7 +16,7 @@ docker compose up
 
 Returns all dataset files from OpenHexa. Optionally filter by workspace slug.
 
-**Returns:** `workspace`, `dataset`, `version`, `filename`, `file_id`
+**Returns:** `workspace`, `dataset`, `version`, `filename`, `file_path`
 
 **Note:** Download URLs are not included because generating them is time-consuming on the OpenHexa side. Use `get_dataset_file_url()` to fetch URLs selectively only for the files you need.
 
@@ -24,7 +24,7 @@ Returns all dataset files from OpenHexa. Optionally filter by workspace slug.
 
 Returns the download URL for a dataset file by its ID.
 
-**Arguments:** `file_id` (string)  
+**Arguments:** `file_path` (string)  
 **Returns:** Download URL (string or NULL)
 
 **Note:** Observed execution time: ~900ms
@@ -40,49 +40,33 @@ SELECT * FROM openhexa_dataset_files('pathways-meg-ind-dhs72020');
 ### Get the url of a file from its unique id
 
 ```sql
-SELECT get_dataset_file_url('a2b203b9-afc0-4dad-a522-fc6d0c9abeff') as download_url;
-```
-
-### Get multiple file urls
-```sql
-SELECT workspace, dataset, filename, file_id, get_dataset_file_url(file_id) as download_url FROM openhexa_dataset_files() LIMIT 5;
+SELECT get_dataset_file_url('pathways-senegal-2019-dhs8/sen-2019dhs8-aggregated-metrics/latest/metrics.parquet');
 ```
 
 ### Querying a parquet file
 
 ```sql
 -- File-level details
-SELECT * FROM parquet_metadata(get_dataset_file_url('f1e34318-bc52-4598-80ae-4ab89434649a'));
+SELECT * FROM parquet_metadata(get_dataset_file_url('pathways-senegal-2019-dhs8/sen-2019dhs8-aggregated-metrics/latest/metrics.parquet'));
 
 -- Column schema
-DESCRIBE SELECT * FROM read_parquet(get_dataset_file_url('f1e34318-bc52-4598-80ae-4ab89434649a'));
+DESCRIBE SELECT * FROM read_parquet(get_dataset_file_url('pathways-senegal-2019-dhs8/sen-2019dhs8-aggregated-metrics/latest/metrics.parquet'));
 
 -- Count total rows
-SELECT count(*) AS total_rows FROM read_parquet(get_dataset_file_url('f1e34318-bc52-4598-80ae-4ab89434649a'));
+SELECT count(*) AS total_rows FROM read_parquet(get_dataset_file_url('pathways-senegal-2019-dhs8/sen-2019dhs8-aggregated-metrics/latest/metrics.parquet'));
 
 -- See the first few rows
-SELECT * FROM read_parquet(get_dataset_file_url('f1e34318-bc52-4598-80ae-4ab89434649a')) LIMIT 10;
+SELECT * FROM read_parquet(get_dataset_file_url('pathways-senegal-2019-dhs8/sen-2019dhs8-aggregated-metrics/latest/metrics.parquet')) LIMIT 10;
 ```
 
 ## Learnings
-### Not nice to lookup to files using the GraphQL api. It would be nicer to have an API like:
+### Not nice to lookup to files using the GraphQL api
 
-```sql
-SELECT file_url FROM OPENHEXA_FILE_DATASETS WHERE 
-    workspace_slug='pathways-meg-ind-dhs72020' AND 
-    dataset_slug='xyz' AND 
-    file_name='myfile.parquet' AND
-    dataset_version='version'
-```
-
-and a scalar that could be used like this:
-
-```sql
-DESCRIBE SELECT * FROM read_parquet(get_dataset_file_url('workspace_slug/dataset_slug/(version|latest)/myfile.parquet'));
-```
+- for looking at the available datasets and files, it would be more efficient to connect direclty to the OpenHexa DB. But then we would bypass the OH authorisation layer.
+- similarly, we could directly use the OpenHexa bucket and avoid using pre-signed, short-term urls. But it would also require other security safeguards.
 
 ### Do we already have a Superset instance that uses the OpenHexa credentials?
-If so, we could filter the above transparently according to the user's permissions
+If so, we could filter the above queries transparently according to the user's permissions
 
 ### DuckDB vs Clickhouse
 
