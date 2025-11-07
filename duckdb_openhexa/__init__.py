@@ -5,6 +5,18 @@ import re
 
 import duckdb
 
+# Patch duckdb-engine to use connection pool for HTTP cache persistence
+# This must happen BEFORE duckdb_engine is imported elsewhere
+from duckdb_openhexa.connection_pool import patch_duckdb_engine_dialect
+
+# Import duckdb_engine here to ensure it's loaded before patching
+try:
+    import duckdb_engine  # noqa: F401
+    patch_duckdb_engine_dialect()
+except ImportError:
+    # duckdb_engine not available, skip patching
+    pass
+
 from duckdb_openhexa.functions import openhexa_dataset_files, get_dataset_file_url
 
 __all__ = [
