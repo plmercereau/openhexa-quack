@@ -7,6 +7,8 @@ requires-python = ">=3.10"
 dependencies = [
     "duckdb>=0.10.0",
     "duckdb-engine>=0.11.0",
+    "flask>=2.0.0",
+    "flask-login>=0.6.0",
     "gql[requests]>=3.5.0",
     "pandas>=2.0.0",
     "graphql-core>=3.2.0",

@@ -159,7 +159,14 @@ class OpenHexaGraphQLClient:
                 )
                 del _download_url_cache[file_path]
 
-        workspace_slug, dataset_slug, version, filename = file_path.split("/")
+        # Parse file path: workspace/dataset/version/filename
+        parts = file_path.split("/")
+        if len(parts) < 4:
+            raise ValueError(
+                f"Invalid file path format. Expected 'workspace/dataset/version/filename', got '{file_path}' "
+                f"(only {len(parts)} parts found)"
+            )
+        workspace_slug, dataset_slug, version, filename = parts[0], parts[1], parts[2], "/".join(parts[3:])
 
         query_string = """
         query GetFileDownloadUrl($workspaceSlug: String!, $datasetSlug: String!, $filename: String!) {{

@@ -12,4 +12,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-
+    volumes:
+      - ./superset/superset_config.py:/app/superset/superset_config.py
+      - ./duckdb_openhexa:/app/duckdb_openhexa/
