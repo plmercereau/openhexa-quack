@@ -72,7 +72,7 @@ Returns the download URL for a dataset file by its ID.
 SELECT * FROM openhexa_dataset_files('pathways-meg-ind-dhs72020');
 ```
 
-### Get the url of a file from its unique id
+### Get the url of a file from its path
 
 ```sql
 SELECT get_dataset_file_url('pathways-senegal-2019-dhs8/sen-2019dhs8-aggregated-metrics/latest/metrics.parquet');
