@@ -1,9 +1,9 @@
 # OpenHexa, Superset, and DuckDB. Quack.
 
 This project provides a custom DuckDB connector for Superset with:
-- **Per-user connection pooling** - Each user gets their own persistent DuckDB connection
+- **Per-user connection pooling** - Each user gets their own persistent DuckDB connection with a configuration TTL
 - **Pre-installed UDFs** - Custom functions for OpenHexa dataset access
-- **HTTP request caching** - API calls cached to minimize external requests
+- **HTTP request caching** - API calls cached to minimize external requests with a default 9m TTL (GCS signed URLs are signed by OpenHexa for 10m)
 
 As a result, it is possible to query files in OpenHexa datasets from Superset, such as:
 ```sql
@@ -16,7 +16,17 @@ GROUP BY variable
 
 Given the request to OpenHexa for a signed URL of the dataset, Superset keeps a per-user DuckDB connection between queries, and DuckDB cache is configured, we have:
 - first pass: ~1,600ms
-- second pass: `~120ms. When bypassing the Superset UI (authz, parsing, serialisation, http rendering), we get ~8ms SQLAlchemy/DuckDB response time.
+- second pass: ~110ms. When bypassing the Superset UI (authz, parsing, serialisation, http rendering), we get ~8ms SQLAlchemy/DuckDB response time.
+
+These performance improvements work for non-OpenHexa files:
+```sql
+SELECT *
+FROM read_parquet('https://huggingface.co/datasets/ibm-research/duorc/resolve/refs%2Fconvert%2Fparquet/ParaphraseRC/train/0000.parquet')
+LIMIT 5;
+```
+
+- first pass: ~2,000ms
+- second pass: ~110ms
 
 ## Getting started
 1. Create a `.env` file with a valid `OPENHEXA_API_TOKEN`
@@ -94,7 +104,7 @@ SELECT * FROM read_parquet(get_dataset_file_url('pathways-senegal-2019-dhs8/sen-
 If so, we could filter the above queries transparently according to the user's permissions
 
 ### Not much needs to be done to improve DX for pipeline editors
-Instead of implementing UDF for pipelines, we would only need to implement a `get_dataset_file_url` function in the Python SDK:
+Instead of implementing UDF for pipelines, we could implement a `get_dataset_file_url` function in the Python SDK:
 ```python
 from openhexa.sdk import workspace
 import duckdb
@@ -140,5 +150,8 @@ duckdb.sql("SELECT * FROM my_table LIMIT 10;").show()
   - Hard to set, need ops expertise
   - Harder SQL dialect 
   - Depending on our use case, may be overkill
+
+## What's missing in this approach
+- Possible concurency issue if the same user tries to run queries in parallel. In the current implementation, the same DuckDB connection will be reused, which may fail.
 
 Quack.

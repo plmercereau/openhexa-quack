@@ -4,6 +4,8 @@ This dialect is exclusively for duckdb_oh:// URIs and does not affect standard d
 """
 
 import logging
+import os
+import time
 from threading import Lock
 from typing import Dict, Tuple
 
@@ -11,6 +13,10 @@ import duckdb
 from duckdb_engine import Dialect, ConnectionWrapper, get_core_config, apply_config
 
 logger = logging.getLogger(__name__)
+
+# Connection TTL configuration
+_CONNECTION_TTL_SECONDS = int(os.getenv("DUCKDB_OH_CONNECTION_TTL_MINUTES", "60")) * 60
+logger.info(f"Connection TTL set to {_CONNECTION_TTL_SECONDS}s ({_CONNECTION_TTL_SECONDS/60:.0f}min)")
 
 
 class DuckDBOpenHexaDialect(Dialect):
@@ -25,8 +31,8 @@ class DuckDBOpenHexaDialect(Dialect):
     Only affects duckdb_oh:// connections, leaving standard duckdb:// unmodified.
     """
     
-    # Class-level connection pool: (user_id, database_path) -> connection
-    _connection_pool: Dict[Tuple[str, str], duckdb.DuckDBPyConnection] = {}
+    # Class-level connection pool: (user_id, database_path) -> (connection, timestamp)
+    _connection_pool: Dict[Tuple[str, str], Tuple[duckdb.DuckDBPyConnection, float]] = {}
     _pool_lock = Lock()
     
     @classmethod
@@ -45,15 +51,26 @@ class DuckDBOpenHexaDialect(Dialect):
         with cls._pool_lock:
             # Check if we have a connection for this user+database
             if cache_key in cls._connection_pool:
-                conn = cls._connection_pool[cache_key]
-                try:
-                    # Verify connection is still alive
-                    conn.execute("SELECT 1")
-                    logger.debug(f"Reusing pooled connection for user={user_id}, db={database_path}")
-                    return conn
-                except Exception as e:
-                    logger.warning(f"Pooled connection dead, removing: {e}")
+                conn, created_at = cls._connection_pool[cache_key]
+                age_seconds = time.time() - created_at
+                
+                # Check if connection has expired
+                if age_seconds > _CONNECTION_TTL_SECONDS:
+                    logger.info(f"Connection expired for user={user_id} (age: {age_seconds:.1f}s > TTL: {_CONNECTION_TTL_SECONDS}s), recreating")
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
                     del cls._connection_pool[cache_key]
+                else:
+                    try:
+                        # Verify connection is still alive
+                        conn.execute("SELECT 1")
+                        logger.debug(f"Reusing pooled connection for user={user_id}, db={database_path} (age: {age_seconds:.1f}s)")
+                        return conn
+                    except Exception as e:
+                        logger.warning(f"Pooled connection dead, removing: {e}")
+                        del cls._connection_pool[cache_key]
             
             # Create new connection
             logger.info(f"Creating new pooled connection for user={user_id}, db={database_path}")
@@ -72,7 +89,7 @@ class DuckDBOpenHexaDialect(Dialect):
             
             logger.info(f"Configured HTTP caching, extensions, and UDFs for pooled connection")
             
-            cls._connection_pool[cache_key] = conn
+            cls._connection_pool[cache_key] = (conn, time.time())
             return conn
     
     @staticmethod

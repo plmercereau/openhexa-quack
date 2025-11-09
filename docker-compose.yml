@@ -5,8 +5,13 @@ services:
       - "8088:8088"
     environment:
       - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY:-your-secret-key-change-in-production}
-      - OPENHEXA_GRAPHQL_URL=${OPENHEXA_GRAPHQL_URL:-https://app.openhexa.org/graphql}
+      # OpenHexa API Configuration
       - OPENHEXA_API_TOKEN=${OPENHEXA_API_TOKEN}
+      - OPENHEXA_GRAPHQL_URL=${OPENHEXA_GRAPHQL_URL:-https://app.openhexa.org/graphql/}
+      - OPENHEXA_CACHE_SIZE=${OPENHEXA_CACHE_SIZE:-1000}
+      - OPENHEXA_CACHE_GCS_TTL_MINUTES=${OPENHEXA_CACHE_GCS_TTL_MINUTES:-9}
+      # DuckDB Connection Pool Configuration
+      - DUCKDB_OH_CONNECTION_TTL_MINUTES=${DUCKDB_OH_CONNECTION_TTL_MINUTES:-60}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8088/health"]
       interval: 30s

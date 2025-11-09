@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 # Cache stores tuples of (url, timestamp) for TTL enforcement
 _download_url_cache: Dict[str, Tuple[Optional[str], float]] = {}
 _CACHE_SIZE = int(os.getenv("OPENHEXA_CACHE_SIZE", "1000"))
-_CACHE_TTL_SECONDS = int(os.getenv("GCS_SIGNED_BUCKET_CACHE_TTL_MINUTES", "9")) * 60
+_CACHE_TTL_SECONDS = int(os.getenv("OPENHEXA_CACHE_GCS_TTL_MINUTES", "9")) * 60
 logger.info(
     f"Global download URL cache configured with max size {_CACHE_SIZE} and TTL {_CACHE_TTL_SECONDS}s"
 )
